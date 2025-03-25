@@ -1,144 +1,141 @@
 package com.stealnshare.server;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 import com.stealnshare.common.GameConfig;
-import java.io.*;
-import java.net.*;
-import java.util.concurrent.*;
 
 public class GameServer {
-    private Socket client1;
-    private Socket client2;
-    private BufferedReader in1, in2;
-    private PrintWriter out1, out2;
-    
-    // Game configuration and state
+    private ServerSocket serverSocket;
+    private PlayerHandler[] players;
     private int totalMoney;
     private int numRounds;
-    private int currentRound = 1;
-    private int betAmount;
-    private int balance1, balance2;
+    private int currentRound;
     
-    public GameServer() throws IOException {
-        ServerSocket serverSocket = new ServerSocket(GameConfig.PORT);
-        System.out.println("Server started on port " + GameConfig.PORT);
-        
-        // Wait for two clients to connect
-        System.out.println("Waiting for Client1...");
-        client1 = serverSocket.accept();
-        System.out.println("Client1 connected: " + client1.getInetAddress());
-        
-        System.out.println("Waiting for Client2...");
-        client2 = serverSocket.accept();
-        System.out.println("Client2 connected: " + client2.getInetAddress());
-        
-        setupStreams();
-        initializeGame();
-        playGame();
-        cleanup();
-    }
-    
-    private void setupStreams() throws IOException {
-        in1 = new BufferedReader(new InputStreamReader(client1.getInputStream()));
-        out1 = new PrintWriter(client1.getOutputStream(), true);
-        in2 = new BufferedReader(new InputStreamReader(client2.getInputStream()));
-        out2 = new PrintWriter(client2.getOutputStream(), true);
-    }
-    
-    private void initializeGame() throws IOException {
-        // Receive initial configuration from both clients
-        String config1 = in1.readLine();
-        String config2 = in2.readLine();
-        System.out.println("Received configs: " + config1 + " , " + config2);
-        
-        // Parse configuration (using Client1's values)
-        String[] parts = config1.split(":");
-        totalMoney = Integer.parseInt(parts[1]);
-        numRounds = Integer.parseInt(parts[2]);
-        
-        // Initialize game state
-        balance1 = totalMoney;
-        balance2 = totalMoney;
-        betAmount = totalMoney / numRounds;
-        
-        // Inform clients game is starting
-        out1.println(String.format(GameConfig.GAME_START, "Steal and Share"));
-        out2.println(String.format(GameConfig.GAME_START, "Steal and Share"));
-    }
-    
-    private void playGame() {
-        while (currentRound <= numRounds) {
-            // Announce round
-            String roundMsg = String.format(GameConfig.ROUND_FORMAT, currentRound, betAmount);
-            out1.println(roundMsg);
-            out2.println(roundMsg);
-            
-            // Get moves
-            String move1 = getMoveWithTimeout(in1);
-            String move2 = getMoveWithTimeout(in2);
-            System.out.println("Round " + currentRound + " moves: Client1=" + move1 + ", Client2=" + move2);
-            
-            processRound(move1, move2);
-            currentRound++;
-        }
-        
-        // Send final results
-        out1.println(String.format(GameConfig.GAME_OVER, balance1));
-        out2.println(String.format(GameConfig.GAME_OVER, balance2));
-    }
-    
-    private String getMoveWithTimeout(BufferedReader in) {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<String> future = executor.submit(() -> in.readLine());
-        
+    public GameServer() {
+        players = new PlayerHandler[2];
         try {
-            String move = future.get(GameConfig.MOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            return (move != null && !move.trim().isEmpty()) ? move.toUpperCase().trim() : GameConfig.SHARE;
-        } catch (Exception e) {
-            return GameConfig.SHARE;  // Default to SHARE on timeout or error
+            serverSocket = new ServerSocket(GameConfig.PORT);
+            System.out.println("Server started on port " + GameConfig.PORT);
+        } catch (IOException e) {
+            System.err.println("Could not listen on port " + GameConfig.PORT);
+            System.exit(1);
+        }
+    }
+    
+    public void start() {
+        try {
+            // Wait for two players to connect
+            System.out.println("Waiting for players to connect...");
+            for (int i = 0; i < 2; i++) {
+                Socket clientSocket = serverSocket.accept();
+                players[i] = new PlayerHandler(clientSocket, i);
+                System.out.println("Player " + (i + 1) + " connected");
+            }
+            
+            // Get game configuration from first player
+            String config = players[0].in.readLine();
+            if (config.startsWith("CONFIG:")) {
+                String[] parts = config.split(":");
+                totalMoney = Integer.parseInt(parts[1]);
+                numRounds = Integer.parseInt(parts[2]);
+                players[0].balance = totalMoney;
+                players[1].balance = totalMoney;
+            }
+            
+            // Start the game
+            players[0].out.println(GameConfig.GAME_START);
+            players[1].out.println(GameConfig.GAME_START);
+            
+            // Play rounds
+            for (currentRound = 1; currentRound <= numRounds; currentRound++) {
+                playRound();
+            }
+            
+            // Game over
+            players[0].out.println(GameConfig.GAME_OVER);
+            players[1].out.println(GameConfig.GAME_OVER);
+            
+        } catch (IOException e) {
+            System.err.println("Error in game: " + e.getMessage());
         } finally {
-            executor.shutdownNow();
+            try {
+                serverSocket.close();
+            } catch (IOException e) {
+                System.err.println("Error closing server: " + e.getMessage());
+            }
         }
     }
     
-    private void processRound(String move1, String move2) {
-        String resultMessage;
+    private void playRound() throws IOException {
+        // Announce round
+        String roundMsg = String.format(GameConfig.ROUND_FORMAT, currentRound);
+        players[0].out.println(roundMsg);
+        players[1].out.println(roundMsg);
         
-        if (move1.equals(GameConfig.STEAL) && move2.equals(GameConfig.STEAL)) {
-            balance1 -= betAmount;
-            balance2 -= betAmount;
-            resultMessage = "Both chose STEAL. Both lose $" + betAmount;
-        } else if (move1.equals(GameConfig.SHARE) && move2.equals(GameConfig.SHARE)) {
-            resultMessage = "Both chose SHARE. No changes in balance.";
-        } else if (move1.equals(GameConfig.STEAL) && move2.equals(GameConfig.SHARE)) {
-            balance1 += betAmount;
-            balance2 -= betAmount;
-            resultMessage = "Client1 STEALS and wins $" + betAmount + " from Client2";
-        } else {
-            balance1 -= betAmount;
-            balance2 += betAmount;
-            resultMessage = "Client2 STEALS and wins $" + betAmount + " from Client1";
-        }
+        // Get moves with timeout
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        Future<String> move1Future = executor.submit(() -> players[0].in.readLine());
+        Future<String> move2Future = executor.submit(() -> players[1].in.readLine());
         
-        // Send round results
-        out1.println(String.format(GameConfig.RESULT_FORMAT, resultMessage, balance1));
-        out2.println(String.format(GameConfig.RESULT_FORMAT, resultMessage, balance2));
-    }
-    
-    private void cleanup() {
+        String move1 = null, move2 = null;
         try {
-            client1.close();
-            client2.close();
-            System.out.println("Game over. Server closed connections.");
-        } catch(IOException e) {
-            e.printStackTrace();
+            move1 = move1Future.get(GameConfig.MOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            move2 = move2Future.get(GameConfig.MOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            // If timeout or error, default to STEAL
+            if (move1 == null) move1 = GameConfig.STEAL;
+            if (move2 == null) move2 = GameConfig.STEAL;
+        }
+        executor.shutdownNow();
+        
+        // Process moves and update balances
+        if (move1.equals(GameConfig.SHARE) && move2.equals(GameConfig.SHARE)) {
+            // Both share - both gain 100
+            players[0].balance += 100;
+            players[1].balance += 100;
+        } else if (move1.equals(GameConfig.STEAL) && move2.equals(GameConfig.SHARE)) {
+            // Player 1 steals - gains 200
+            players[0].balance += 200;
+        } else if (move1.equals(GameConfig.SHARE) && move2.equals(GameConfig.STEAL)) {
+            // Player 2 steals - gains 200
+            players[1].balance += 200;
+        }
+        // Both steal - no changes
+        
+        // Send results
+        String resultMsg = String.format(GameConfig.RESULT_FORMAT, move1, move2, 
+            players[0].balance, players[1].balance);
+        players[0].out.println(resultMsg);
+        players[1].out.println(resultMsg);
+    }
+    
+    private class PlayerHandler {
+        Socket socket;
+        BufferedReader in;
+        PrintWriter out;
+        int balance;
+        int id;
+        
+        public PlayerHandler(Socket socket, int id) throws IOException {
+            this.socket = socket;
+            this.id = id;
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream(), true);
         }
     }
     
     public static void main(String[] args) {
-        try {
-            new GameServer();
-        } catch(IOException e) {
-            e.printStackTrace();
-        }
+        new GameServer().start();
     }
 }

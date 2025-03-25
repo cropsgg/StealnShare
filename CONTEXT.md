@@ -340,3 +340,12 @@ public class GameClient extends JFrame {
         });
     }
 }
+
+
+cd /Users/crops/stealnshare/StealnShare
+java -cp target/steal-and-share-1.0-SNAPSHOT.jar com.stealnshare.client.GameClient
+
+cd /Users/crops/stealnshare/StealnShare
+java -cp target/steal-and-share-1.0-SNAPSHOT.jar com.stealnshare.client.GameClient
+
+

@@ -1,3 +1,4 @@
 com/stealnshare/client/GameClient.class
 com/stealnshare/common/GameConfig.class
+com/stealnshare/server/GameServer$PlayerHandler.class
 com/stealnshare/server/GameServer.class
