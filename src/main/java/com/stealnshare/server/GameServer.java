@@ -18,12 +18,12 @@ import com.stealnshare.common.GameConfig;
 public class GameServer {
     private ServerSocket serverSocket;
     private PlayerHandler[] players;
-    private int totalMoney;
-    private int numRounds;
+    private int numRounds; // Number of rounds set to default
     private int currentRound;
     
     public GameServer() {
         players = new PlayerHandler[2];
+        numRounds = GameConfig.DEFAULT_ROUNDS; // Set default rounds
         try {
             serverSocket = new ServerSocket(GameConfig.PORT);
             System.out.println("Server started on port " + GameConfig.PORT);
@@ -43,15 +43,9 @@ public class GameServer {
                 System.out.println("Player " + (i + 1) + " connected");
             }
             
-            // Get game configuration from first player
-            String config = players[0].in.readLine();
-            if (config.startsWith("CONFIG:")) {
-                String[] parts = config.split(":");
-                totalMoney = Integer.parseInt(parts[1]);
-                numRounds = Integer.parseInt(parts[2]);
-                players[0].balance = totalMoney;
-                players[1].balance = totalMoney;
-            }
+            // Initialize player coins to 0
+            players[0].coins = 0;
+            players[1].coins = 0;
             
             // Start the game
             players[0].out.println(GameConfig.GAME_START);
@@ -85,51 +79,121 @@ public class GameServer {
         
         // Get moves with timeout
         ExecutorService executor = Executors.newFixedThreadPool(2);
-        Future<String> move1Future = executor.submit(() -> players[0].in.readLine());
-        Future<String> move2Future = executor.submit(() -> players[1].in.readLine());
+        Future<String> move1Future = executor.submit(() -> {
+            try {
+                return players[0].in.readLine();
+            } catch (IOException e) {
+                System.err.println("Error reading from player 1: " + e.getMessage());
+                return null;
+            }
+        });
         
-        String move1 = null, move2 = null;
+        Future<String> move2Future = executor.submit(() -> {
+            try {
+                return players[1].in.readLine();
+            } catch (IOException e) {
+                System.err.println("Error reading from player 2: " + e.getMessage());
+                return null;
+            }
+        });
+        
+        String move1 = GameConfig.SHARE; // Default to SHARE
+        String move2 = GameConfig.SHARE; // Default to SHARE
+        boolean player1Timeout = false;
+        boolean player2Timeout = false;
+        
         try {
-            move1 = move1Future.get(GameConfig.MOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            move2 = move2Future.get(GameConfig.MOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            // If timeout or error, default to STEAL
-            if (move1 == null) move1 = GameConfig.STEAL;
-            if (move2 == null) move2 = GameConfig.STEAL;
+            // Try to get player 1's move with timeout
+            try {
+                String tempMove1 = move1Future.get(GameConfig.MOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                if (tempMove1 != null) {
+                    move1 = tempMove1;
+                } else {
+                    player1Timeout = true;
+                }
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                player1Timeout = true;
+                System.out.println("Player 1 timeout: " + e.getMessage());
+            }
+            
+            // Try to get player 2's move with timeout
+            try {
+                String tempMove2 = move2Future.get(GameConfig.MOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                if (tempMove2 != null) {
+                    move2 = tempMove2;
+                } else {
+                    player2Timeout = true;
+                }
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                player2Timeout = true;
+                System.out.println("Player 2 timeout: " + e.getMessage());
+            }
+            
+        } finally {
+            executor.shutdownNow();
         }
-        executor.shutdownNow();
         
-        // Process moves and update balances
+        // Validate move values to ensure they are always valid
+        if (!move1.equals(GameConfig.STEAL) && !move1.equals(GameConfig.SHARE)) {
+            move1 = GameConfig.SHARE; // Default to SHARE for invalid values
+        }
+        
+        if (!move2.equals(GameConfig.STEAL) && !move2.equals(GameConfig.SHARE)) {
+            move2 = GameConfig.SHARE; // Default to SHARE for invalid values
+        }
+        
+        System.out.println("Round " + currentRound + " - Player 1 move: " + move1 + ", Player 2 move: " + move2);
+        if (player1Timeout) System.out.println("Player 1 timed out - defaulted to SHARE");
+        if (player2Timeout) System.out.println("Player 2 timed out - defaulted to SHARE");
+        
+        // Process moves and update coins according to new rules
         if (move1.equals(GameConfig.SHARE) && move2.equals(GameConfig.SHARE)) {
-            // Both share - both gain 100
-            players[0].balance += 100;
-            players[1].balance += 100;
+            // Both share - both gain 3 coins
+            players[0].coins += GameConfig.BOTH_SHARE_REWARD;
+            players[1].coins += GameConfig.BOTH_SHARE_REWARD;
         } else if (move1.equals(GameConfig.STEAL) && move2.equals(GameConfig.SHARE)) {
-            // Player 1 steals - gains 200
-            players[0].balance += 200;
+            // Player 1 steals - gains 5 coins, player 2 gets 0
+            players[0].coins += GameConfig.STEAL_FROM_SHARE_REWARD;
+            players[1].coins += GameConfig.SHARE_GETS_STOLEN_REWARD;
         } else if (move1.equals(GameConfig.SHARE) && move2.equals(GameConfig.STEAL)) {
-            // Player 2 steals - gains 200
-            players[1].balance += 200;
+            // Player 2 steals - gains 5 coins, player 1 gets 0
+            players[0].coins += GameConfig.SHARE_GETS_STOLEN_REWARD;
+            players[1].coins += GameConfig.STEAL_FROM_SHARE_REWARD;
+        } else if (move1.equals(GameConfig.STEAL) && move2.equals(GameConfig.STEAL)) {
+            // Both steal - both get 1 coin
+            players[0].coins += GameConfig.BOTH_STEAL_REWARD;
+            players[1].coins += GameConfig.BOTH_STEAL_REWARD;
         }
-        // Both steal - no changes
         
-        // Send results
-        String resultMsg = String.format(GameConfig.RESULT_FORMAT, move1, move2, 
-            players[0].balance, players[1].balance);
-        players[0].out.println(resultMsg);
-        players[1].out.println(resultMsg);
+        // Send player-specific result messages with timeout flags
+        // Create special format that includes timeout information
+        String resultMsgPlayer1 = String.format(GameConfig.RESULT_FORMAT, 
+            move1, move2, players[0].coins, players[1].coins) + 
+            (player1Timeout ? ":TIMEOUT" : "");
+            
+        String resultMsgPlayer2 = String.format(GameConfig.RESULT_FORMAT, 
+            move2, move1, players[1].coins, players[0].coins) + 
+            (player2Timeout ? ":TIMEOUT" : "");
+            
+        players[0].out.println(resultMsgPlayer1);
+        players[1].out.println(resultMsgPlayer2);
+        
+        // Log the round result
+        System.out.println(String.format("Round %d complete. Player 1 coins: %d, Player 2 coins: %d", 
+            currentRound, players[0].coins, players[1].coins));
     }
     
     private class PlayerHandler {
         Socket socket;
         BufferedReader in;
         PrintWriter out;
-        int balance;
+        int coins; // Renamed from balance to coins
         int id;
         
         public PlayerHandler(Socket socket, int id) throws IOException {
             this.socket = socket;
             this.id = id;
+            this.coins = 0;
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(socket.getOutputStream(), true);
         }

@@ -1,48 +1,77 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Project Object Model (POM) - Core configuration file for Maven projects -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Project Information -->
+    <!-- groupId: Unique identifier for your project's organization -->
     <groupId>com.stealnshare</groupId>
+    <!-- artifactId: Name of your project -->
     <artifactId>steal-and-share</artifactId>
+    <!-- version: Current version of your project (1.0-SNAPSHOT indicates development version) -->
     <version>1.0-SNAPSHOT</version>
 
+    <!-- Project Properties -->
+    <!-- Configures Java version and character encoding -->
     <properties>
+        <!-- Sets Java source code version to 11 -->
         <maven.compiler.source>11</maven.compiler.source>
+        <!-- Sets Java target version to 11 -->
         <maven.compiler.target>11</maven.compiler.target>
+        <!-- Sets project character encoding to UTF-8 -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <!-- Project Dependencies -->
+    <!-- Lists all external libraries required by the project -->
     <dependencies>
-        <!-- JUnit for testing -->
+        <!-- JUnit dependency for testing -->
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
             <version>4.13.2</version>
+            <!-- Scope: test - Only available during testing -->
             <scope>test</scope>
         </dependency>
     </dependencies>
 
+    <!-- Build Configuration -->
+    <!-- Defines how the project should be built -->
     <build>
+        <!-- Maven Plugins -->
+        <!-- Plugins extend Maven's functionality -->
         <plugins>
+            <!-- Maven Compiler Plugin -->
+            <!-- Compiles the source code and sets Java version -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.8.1</version>
                 <configuration>
+                    <!-- Sets Java source version to 11 -->
                     <source>11</source>
+                    <!-- Sets Java target version to 11 -->
                     <target>11</target>
                 </configuration>
             </plugin>
+
+            <!-- Maven Exec Plugin -->
+            <!-- Allows running Java applications directly from Maven -->
+            <!-- Used by run-server.sh and run-client.sh scripts -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
                 <configuration>
+                    <!-- Configurable main class through ${exec.mainClass} -->
                     <mainClass>${exec.mainClass}</mainClass>
                 </configuration>
             </plugin>
+
+            <!-- Maven JAR Plugin -->
+            <!-- Creates the executable JAR file -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -50,7 +79,9 @@
                 <configuration>
                     <archive>
                         <manifest>
+                            <!-- Adds classpath to the JAR -->
                             <addClasspath>true</addClasspath>
+                            <!-- Sets the main class to GameServer -->
                             <mainClass>com.stealnshare.server.GameServer</mainClass>
                         </manifest>
                     </archive>

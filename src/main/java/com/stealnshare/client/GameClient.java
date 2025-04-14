@@ -36,18 +36,21 @@ public class GameClient extends JFrame {
     private PrintWriter out;
     private JTextArea gameLog;
     private JButton stealButton, shareButton;
-    private JLabel titleLabel, footerLabel, balanceLabel, roundLabel, opponentLabel;
+    private JLabel titleLabel, footerLabel, coinsLabel, roundLabel, opponentCoinsLabel;
     private JPanel mainPanel, statsPanel;
     private int currentRound = 0;
-    private int totalRounds = 0;
-    private int myBalance = 0;
-    private int opponentBalance = 0;
+    private int totalRounds = GameConfig.DEFAULT_ROUNDS;
+    private int myCoins = 0;
+    private int opponentCoins = 0;
     
     // Sound clips
     private Clip stealSound;
     private Clip shareSound;
     private Clip loseSound;
     private Clip bothStealSound;
+    
+    // Add a new instance variable to track if the client has sent a move
+    private boolean moveSentForCurrentRound = false;
     
     public GameClient() {
         setupUI();
@@ -84,19 +87,19 @@ public class GameClient extends JFrame {
         statsPanel.setBorder(BorderFactory.createTitledBorder("Game Statistics"));
         
         // Round information
-        roundLabel = new JLabel("Round: 0/0", SwingConstants.CENTER);
+        roundLabel = new JLabel(String.format("Round: 0/%d", totalRounds), SwingConstants.CENTER);
         roundLabel.setFont(new Font("Courier", Font.BOLD, 16));
         statsPanel.add(roundLabel);
         
-        // Balance display
-        balanceLabel = new JLabel("Your Balance: $0", SwingConstants.CENTER);
-        balanceLabel.setFont(new Font("Courier", Font.BOLD, 16));
-        statsPanel.add(balanceLabel);
+        // Coins display
+        coinsLabel = new JLabel("Your Coins: 0", SwingConstants.CENTER);
+        coinsLabel.setFont(new Font("Courier", Font.BOLD, 16));
+        statsPanel.add(coinsLabel);
         
-        // Opponent balance
-        opponentLabel = new JLabel("Opponent Balance: $0", SwingConstants.CENTER);
-        opponentLabel.setFont(new Font("Courier", Font.BOLD, 16));
-        statsPanel.add(opponentLabel);
+        // Opponent coins
+        opponentCoinsLabel = new JLabel("Opponent Coins: 0", SwingConstants.CENTER);
+        opponentCoinsLabel.setFont(new Font("Courier", Font.BOLD, 16));
+        statsPanel.add(opponentCoinsLabel);
         
         mainPanel.add(statsPanel, BorderLayout.NORTH);
         
@@ -125,7 +128,7 @@ public class GameClient extends JFrame {
         controlPanel.add(buttonPanel, BorderLayout.CENTER);
         
         // Footer
-        footerLabel = new JLabel("© 2024 Steal and Share", SwingConstants.RIGHT);
+        footerLabel = new JLabel("© 2025 Computer Network project  Steal and Share", SwingConstants.RIGHT);
         footerLabel.setFont(new Font("Courier", Font.ITALIC, 12));
         controlPanel.add(footerLabel, BorderLayout.SOUTH);
         
@@ -155,32 +158,19 @@ public class GameClient extends JFrame {
     
     private void connectToServer() {
         try {
-            // Get initial configuration from user
-            String totalMoneyStr = JOptionPane.showInputDialog(this, 
-                "Enter total money:", "Game Configuration", 
-                JOptionPane.QUESTION_MESSAGE);
-            String numRoundsStr = JOptionPane.showInputDialog(this, 
-                "Enter number of rounds:", "Game Configuration", 
-                JOptionPane.QUESTION_MESSAGE);
-                
-            if (totalMoneyStr == null || numRoundsStr == null) {
-                System.exit(0);
-            }
-            
-            int totalMoney = Integer.parseInt(totalMoneyStr);
-            totalRounds = Integer.parseInt(numRoundsStr);
-            
-            // Connect to server
+            // Connect to server with default settings (no more prompts)
             socket = new Socket("localhost", GameConfig.PORT);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(socket.getOutputStream(), true);
             
-            // Send configuration
-            out.println(String.format(GameConfig.CONFIG_FORMAT, totalMoney, totalRounds));
-            myBalance = totalMoney;
-            opponentBalance = totalMoney;
-            balanceLabel.setText(String.format("Your Balance: $%d", myBalance));
-            opponentLabel.setText(String.format("Opponent Balance: $%d", opponentBalance));
+            // Set default values
+            myCoins = 0;
+            opponentCoins = 0;
+            
+            // Update labels
+            coinsLabel.setText("Your Coins: 0");
+            opponentCoinsLabel.setText("Opponent Coins: 0");
+            roundLabel.setText(String.format("Round: 0/%d", totalRounds));
             
             // Start message listener thread
             new Thread(this::listenForMessages).start();
@@ -246,62 +236,90 @@ public class GameClient extends JFrame {
     }
     
     private void processMessage(String message) {
-        gameLog.append(message + "\n");
-        gameLog.setCaretPosition(gameLog.getDocument().getLength());
-        
         if (message.startsWith("ROUND:")) {
             currentRound = Integer.parseInt(message.split(":")[1]);
             roundLabel.setText(String.format("Round: %d/%d", currentRound, totalRounds));
             stealButton.setEnabled(true);
             shareButton.setEnabled(true);
-        } else if (message.startsWith("RESULT:")) {
-            stealButton.setEnabled(false);
-            shareButton.setEnabled(false);
+            moveSentForCurrentRound = false; // Reset the flag for the new round
             
+            // Add a message to inform the player
+            gameLog.append(message + "\n");
+            gameLog.append("Please choose STEAL or SHARE for this round.\n");
+        } else if (message.startsWith("RESULT:")) {
             // Parse result message
             String[] parts = message.split(":");
-            String player1Move = parts[1];
-            String player2Move = parts[2];
-            int player1Balance = Integer.parseInt(parts[3]);
-            int player2Balance = Integer.parseInt(parts[4]);
+            String myMove = parts[1];         // First move is always this player's move
+            String opponentMove = parts[2];   // Second move is always opponent's move
+            int myNewCoins = Integer.parseInt(parts[3]);  // First coins value is always this player's coins
+            int opponentNewCoins = Integer.parseInt(parts[4]); // Second coins value is always opponent's coins
             
-            // Update balances
-            myBalance = player1Balance;
-            opponentBalance = player2Balance;
-            balanceLabel.setText(String.format("Your Balance: $%d", myBalance));
-            opponentLabel.setText(String.format("Opponent Balance: $%d", opponentBalance));
+            // Check if this was a timeout for this player
+            boolean wasTimeout = message.endsWith(":TIMEOUT");
             
-            // Format and display round result
+            // If we didn't send a move or there was a timeout, it means our move defaulted to SHARE
+            if (!moveSentForCurrentRound || wasTimeout) {
+                gameLog.append("Your move timed out - defaulted to SHARE.\n");
+                myMove = GameConfig.SHARE; // Ensure move is set to SHARE in case of timeout
+            }
+            
+            // Calculate coins gained in this round
+            int coinsGained = myNewCoins - myCoins;
+            int opponentCoinsGained = opponentNewCoins - opponentCoins;
+            
+            // Update coins
+            myCoins = myNewCoins;
+            opponentCoins = opponentNewCoins;
+            coinsLabel.setText(String.format("Your Coins: %d", myCoins));
+            opponentCoinsLabel.setText(String.format("Opponent Coins: %d", opponentCoins));
+            
+            // Format and display round result (now that both players have decided)
+            // This only happens at the end of the round after both players have chosen
             String resultMessage = String.format("\nRound %d Result:\n", currentRound);
-            resultMessage += String.format("You chose: %s\n", player1Move);
-            resultMessage += String.format("Opponent chose: %s\n", player2Move);
-            resultMessage += String.format("Your balance changed: $%d\n", player1Balance - myBalance);
-            resultMessage += String.format("Opponent's balance changed: $%d\n", player2Balance - opponentBalance);
+            resultMessage += String.format("You chose: %s\n", myMove);
+            resultMessage += String.format("Opponent chose: %s\n", opponentMove);
+            resultMessage += String.format("Coins gained: %d\n", coinsGained);
+            resultMessage += String.format("Opponent coins gained: %d\n", opponentCoinsGained);
             gameLog.append(resultMessage);
             
-            // Play appropriate sound based on the result
-            if (player1Move.equals(GameConfig.STEAL) && player2Move.equals(GameConfig.SHARE)) {
-                playSound(stealSound);
-            } else if (player1Move.equals(GameConfig.SHARE) && player2Move.equals(GameConfig.SHARE)) {
-                playSound(shareSound);
-            } else if (player1Move.equals(GameConfig.STEAL) && player2Move.equals(GameConfig.STEAL)) {
-                playSound(bothStealSound);
-            } else if (player1Move.equals(GameConfig.SHARE) && player2Move.equals(GameConfig.STEAL)) {
-                playSound(loseSound);
-            }
-        } else if (message.startsWith("GAME_OVER:")) {
+            // Ensure buttons are disabled for this round
             stealButton.setEnabled(false);
             shareButton.setEnabled(false);
-            gameLog.append("\nGame Over!\n");
-            gameLog.append(String.format("Final Balance: $%d\n", myBalance));
-            gameLog.append(String.format("Opponent's Final Balance: $%d\n", opponentBalance));
+            
+            // Play appropriate sound based on the result
+            if (myMove.equals(GameConfig.STEAL) && opponentMove.equals(GameConfig.SHARE)) {
+                playSound(stealSound);
+            } else if (myMove.equals(GameConfig.SHARE) && opponentMove.equals(GameConfig.SHARE)) {
+                playSound(shareSound);
+            } else if (myMove.equals(GameConfig.STEAL) && opponentMove.equals(GameConfig.STEAL)) {
+                playSound(bothStealSound);
+            } else if (myMove.equals(GameConfig.SHARE) && opponentMove.equals(GameConfig.STEAL)) {
+                playSound(loseSound);
+            }
+        } else if (message.equals(GameConfig.GAME_OVER)) {
+            stealButton.setEnabled(false);
+            shareButton.setEnabled(false);
+            gameLog.append("\n" + message + "\n");
+            gameLog.append(String.format("Final Coins: %d\n", myCoins));
+            gameLog.append(String.format("Opponent's Final Coins: %d\n", opponentCoins));
+        } else {
+            // For other messages, just display them
+            gameLog.append(message + "\n");
         }
+        
+        // Always scroll to the bottom when new content is added
+        gameLog.setCaretPosition(gameLog.getDocument().getLength());
     }
     
     private void sendMove(String move) {
         out.println(move);
         stealButton.setEnabled(false);
         shareButton.setEnabled(false);
+        moveSentForCurrentRound = true; // Mark that we've sent a move for this round
+        
+        // Just inform the player about their choice - don't show opponent's choice
+        gameLog.append("You selected: " + move + "\n");
+        gameLog.append("Waiting for round to complete...\n");
     }
     
     public static void main(String[] args) {
