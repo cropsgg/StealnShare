@@ -187,11 +187,15 @@ public class GameClient extends JFrame {
     private void listenForMessages() {
         try {
             String message;
+            System.out.println("[CLIENT] Starting to listen for messages from server");
             while ((message = in.readLine()) != null) {
+                System.out.println("[CLIENT] Received message from server: " + message);
                 final String msg = message;
                 SwingUtilities.invokeLater(() -> processMessage(msg));
             }
         } catch (IOException e) {
+            System.err.println("[CLIENT] Error in message listener: " + e.getMessage());
+            e.printStackTrace();
             SwingUtilities.invokeLater(() -> {
                 gameLog.append("Connection lost.\n");
                 stealButton.setEnabled(false);
@@ -236,8 +240,11 @@ public class GameClient extends JFrame {
     }
     
     private void processMessage(String message) {
+        System.out.println("[CLIENT] Processing message: " + message);
+        
         if (message.startsWith("ROUND:")) {
             currentRound = Integer.parseInt(message.split(":")[1]);
+            System.out.println("[CLIENT] Starting round " + currentRound);
             roundLabel.setText(String.format("Round: %d/%d", currentRound, totalRounds));
             stealButton.setEnabled(true);
             shareButton.setEnabled(true);
@@ -246,7 +253,10 @@ public class GameClient extends JFrame {
             // Add a message to inform the player
             gameLog.append(message + "\n");
             gameLog.append("Please choose STEAL or SHARE for this round.\n");
+            System.out.println("[CLIENT] Enabled buttons for round " + currentRound);
+            
         } else if (message.startsWith("RESULT:")) {
+            System.out.println("[CLIENT] Processing result message: " + message);
             // Parse result message
             String[] parts = message.split(":");
             String myMove = parts[1];         // First move is always this player's move
@@ -256,9 +266,13 @@ public class GameClient extends JFrame {
             
             // Check if this was a timeout for this player
             boolean wasTimeout = message.endsWith(":TIMEOUT");
+            System.out.println("[CLIENT] Result parsed - My move: " + myMove + ", Opponent move: " + opponentMove + 
+                  ", My coins: " + myNewCoins + ", Opponent coins: " + opponentNewCoins + 
+                  (wasTimeout ? ", Timeout occurred" : ""));
             
             // If we didn't send a move or there was a timeout, it means our move defaulted to SHARE
             if (!moveSentForCurrentRound || wasTimeout) {
+                System.out.println("[CLIENT] Move timed out or not sent - defaulted to SHARE");
                 gameLog.append("Your move timed out - defaulted to SHARE.\n");
                 myMove = GameConfig.SHARE; // Ensure move is set to SHARE in case of timeout
             }
@@ -272,6 +286,7 @@ public class GameClient extends JFrame {
             opponentCoins = opponentNewCoins;
             coinsLabel.setText(String.format("Your Coins: %d", myCoins));
             opponentCoinsLabel.setText(String.format("Opponent Coins: %d", opponentCoins));
+            System.out.println("[CLIENT] Updated coins - My coins: " + myCoins + ", Opponent coins: " + opponentCoins);
             
             // Format and display round result (now that both players have decided)
             // This only happens at the end of the round after both players have chosen
@@ -281,10 +296,12 @@ public class GameClient extends JFrame {
             resultMessage += String.format("Coins gained: %d\n", coinsGained);
             resultMessage += String.format("Opponent coins gained: %d\n", opponentCoinsGained);
             gameLog.append(resultMessage);
+            System.out.println("[CLIENT] Displayed round result in game log");
             
             // Ensure buttons are disabled for this round
             stealButton.setEnabled(false);
             shareButton.setEnabled(false);
+            System.out.println("[CLIENT] Disabled buttons after showing result");
             
             // Play appropriate sound based on the result
             if (myMove.equals(GameConfig.STEAL) && opponentMove.equals(GameConfig.SHARE)) {
@@ -297,6 +314,7 @@ public class GameClient extends JFrame {
                 playSound(loseSound);
             }
         } else if (message.equals(GameConfig.GAME_OVER)) {
+            System.out.println("[CLIENT] Game over received");
             stealButton.setEnabled(false);
             shareButton.setEnabled(false);
             gameLog.append("\n" + message + "\n");
@@ -304,6 +322,7 @@ public class GameClient extends JFrame {
             gameLog.append(String.format("Opponent's Final Coins: %d\n", opponentCoins));
         } else {
             // For other messages, just display them
+            System.out.println("[CLIENT] Displaying other message: " + message);
             gameLog.append(message + "\n");
         }
         
@@ -312,7 +331,11 @@ public class GameClient extends JFrame {
     }
     
     private void sendMove(String move) {
+        System.out.println("[CLIENT] Sending move to server: " + move);
         out.println(move);
+        out.flush(); // Ensure the move is sent immediately
+        System.out.println("[CLIENT] Move sent and output flushed");
+        
         stealButton.setEnabled(false);
         shareButton.setEnabled(false);
         moveSentForCurrentRound = true; // Mark that we've sent a move for this round
@@ -320,6 +343,7 @@ public class GameClient extends JFrame {
         // Just inform the player about their choice - don't show opponent's choice
         gameLog.append("You selected: " + move + "\n");
         gameLog.append("Waiting for round to complete...\n");
+        System.out.println("[CLIENT] Updated UI after sending move");
     }
     
     public static void main(String[] args) {
