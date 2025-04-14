@@ -17,15 +17,19 @@ import javax.sound.sampled.Clip;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
+import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import javax.swing.UIManager;
 
 import com.stealnshare.common.GameConfig;
@@ -35,8 +39,8 @@ public class GameClient extends JFrame {
     private BufferedReader in;
     private PrintWriter out;
     private JTextArea gameLog;
-    private JButton stealButton, shareButton;
-    private JLabel titleLabel, footerLabel, coinsLabel, roundLabel, opponentCoinsLabel;
+    private JButton stealButton, shareButton, algorithmButton;
+    private JLabel titleLabel, footerLabel, coinsLabel, roundLabel, opponentCoinsLabel, algorithmLabel;
     private JPanel mainPanel, statsPanel;
     private int currentRound = 0;
     private int totalRounds = GameConfig.DEFAULT_ROUNDS;
@@ -48,6 +52,12 @@ public class GameClient extends JFrame {
     private Clip shareSound;
     private Clip loseSound;
     private Clip bothStealSound;
+    
+    // Algorithm variables
+    private boolean usingAlgorithm = false;
+    private MoveStrategy selectedStrategy = null;
+    private String opponentLastMove = null;
+    private Timer algorithmTimer;
     
     // Add a new instance variable to track if the client has sent a move
     private boolean moveSentForCurrentRound = false;
@@ -83,7 +93,7 @@ public class GameClient extends JFrame {
         mainPanel.add(titlePanel, BorderLayout.NORTH);
         
         // Stats panel
-        statsPanel = new JPanel(new GridLayout(2, 2, 10, 10));
+        statsPanel = new JPanel(new GridLayout(3, 2, 10, 10));
         statsPanel.setBorder(BorderFactory.createTitledBorder("Game Statistics"));
         
         // Round information
@@ -100,6 +110,11 @@ public class GameClient extends JFrame {
         opponentCoinsLabel = new JLabel("Opponent Coins: 0", SwingConstants.CENTER);
         opponentCoinsLabel.setFont(new Font("Courier", Font.BOLD, 16));
         statsPanel.add(opponentCoinsLabel);
+        
+        // Algorithm label
+        algorithmLabel = new JLabel("Algorithm: None", SwingConstants.CENTER);
+        algorithmLabel.setFont(new Font("Courier", Font.BOLD, 16));
+        statsPanel.add(algorithmLabel);
         
         mainPanel.add(statsPanel, BorderLayout.NORTH);
         
@@ -123,8 +138,10 @@ public class GameClient extends JFrame {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
         stealButton = createRetroButton("STEAL", new Color(200, 0, 0));
         shareButton = createRetroButton("SHARE", new Color(0, 100, 0));
+        algorithmButton = createRetroButton("PLAY WITH ALGORITHM", new Color(0, 0, 150));
         buttonPanel.add(stealButton);
         buttonPanel.add(shareButton);
+        buttonPanel.add(algorithmButton);
         controlPanel.add(buttonPanel, BorderLayout.CENTER);
         
         // Footer
@@ -137,10 +154,108 @@ public class GameClient extends JFrame {
         // Button actions
         stealButton.addActionListener(e -> sendMove(GameConfig.STEAL));
         shareButton.addActionListener(e -> sendMove(GameConfig.SHARE));
+        algorithmButton.addActionListener(e -> showAlgorithmDialog());
+        
+        // Initialize algorithm timer (3-second delay)
+        algorithmTimer = new Timer(3000, e -> {
+            if (usingAlgorithm && selectedStrategy != null && currentRound > 0 && !moveSentForCurrentRound) {
+                String move = selectedStrategy.getNextMove(opponentLastMove, currentRound);
+                sendMove(move);
+                gameLog.append("Algorithm (" + selectedStrategy.getName() + ") chose: " + move + "\n");
+            }
+        });
+        algorithmTimer.setRepeats(false);
         
         // Disable buttons initially
         stealButton.setEnabled(false);
         shareButton.setEnabled(false);
+    }
+    
+    private void showAlgorithmDialog() {
+        // Only allow algorithm selection in the first round, before making a move
+        if (currentRound > 1 || moveSentForCurrentRound) {
+            JOptionPane.showMessageDialog(this, 
+                "Algorithms can only be selected in the first round before making a move.",
+                "Cannot Change Algorithm",
+                JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        
+        JDialog dialog = new JDialog(this, "Select Algorithm", true);
+        dialog.setSize(350, 200);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        JLabel label = new JLabel("Choose an algorithm to play for you:", SwingConstants.CENTER);
+        label.setFont(new Font("Courier", Font.BOLD, 14));
+        panel.add(label, BorderLayout.NORTH);
+        
+        // Radio buttons for algorithm selection
+        JPanel radioPanel = new JPanel(new GridLayout(3, 1, 5, 5));
+        ButtonGroup group = new ButtonGroup();
+        
+        JRadioButton titForTatButton = new JRadioButton("Tit for Tat (Start with SHARE, then copy opponent)");
+        JRadioButton randomButton = new JRadioButton("Random (Randomly choose STEAL or SHARE)");
+        JRadioButton systematicButton = new JRadioButton("Systematic (SHARE, STEAL, SHARE, STEAL, ...)");
+        
+        group.add(titForTatButton);
+        group.add(randomButton);
+        group.add(systematicButton);
+        
+        radioPanel.add(titForTatButton);
+        radioPanel.add(randomButton);
+        radioPanel.add(systematicButton);
+        
+        panel.add(radioPanel, BorderLayout.CENTER);
+        
+        // Button panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JButton selectButton = new JButton("Select Algorithm");
+        JButton cancelButton = new JButton("Cancel");
+        
+        selectButton.addActionListener(e -> {
+            if (titForTatButton.isSelected()) {
+                selectedStrategy = new TitForTatStrategy();
+            } else if (randomButton.isSelected()) {
+                selectedStrategy = new RandomStrategy();
+            } else if (systematicButton.isSelected()) {
+                selectedStrategy = new SystematicStrategy();
+            } else {
+                JOptionPane.showMessageDialog(dialog, 
+                    "Please select an algorithm.", 
+                    "No Selection", 
+                    JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            
+            usingAlgorithm = true;
+            algorithmLabel.setText("Algorithm: " + selectedStrategy.getName());
+            stealButton.setEnabled(false);
+            shareButton.setEnabled(false);
+            algorithmButton.setEnabled(false);
+            
+            gameLog.append("You selected algorithm: " + selectedStrategy.getName() + "\n");
+            gameLog.append("The algorithm will now play the game for you.\n");
+            
+            // If we're already in a round, start the algorithm timer
+            if (currentRound > 0 && !moveSentForCurrentRound) {
+                gameLog.append("Algorithm is thinking for 3 seconds...\n");
+                algorithmTimer.start();
+            }
+            
+            dialog.dispose();
+        });
+        
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        buttonPanel.add(selectButton);
+        buttonPanel.add(cancelButton);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+        
+        dialog.setContentPane(panel);
+        dialog.setVisible(true);
     }
     
     private JButton createRetroButton(String text, Color color) {
@@ -200,6 +315,7 @@ public class GameClient extends JFrame {
                 gameLog.append("Connection lost.\n");
                 stealButton.setEnabled(false);
                 shareButton.setEnabled(false);
+                algorithmButton.setEnabled(false);
             });
         }
     }
@@ -246,13 +362,26 @@ public class GameClient extends JFrame {
             currentRound = Integer.parseInt(message.split(":")[1]);
             System.out.println("[CLIENT] Starting round " + currentRound);
             roundLabel.setText(String.format("Round: %d/%d", currentRound, totalRounds));
-            stealButton.setEnabled(true);
-            shareButton.setEnabled(true);
+            
+            // Only enable manual buttons if not using algorithm
+            if (!usingAlgorithm) {
+                stealButton.setEnabled(true);
+                shareButton.setEnabled(true);
+            } else if (selectedStrategy != null) {
+                // If using algorithm, start the timer
+                gameLog.append("Algorithm is thinking for 3 seconds...\n");
+                algorithmTimer.start();
+            }
+            
             moveSentForCurrentRound = false; // Reset the flag for the new round
             
             // Add a message to inform the player
             gameLog.append(message + "\n");
-            gameLog.append("Please choose STEAL or SHARE for this round.\n");
+            if (!usingAlgorithm) {
+                gameLog.append("Please choose STEAL or SHARE for this round.\n");
+            } else {
+                gameLog.append("Algorithm will choose for you.\n");
+            }
             System.out.println("[CLIENT] Enabled buttons for round " + currentRound);
             
         } else if (message.startsWith("RESULT:")) {
@@ -263,6 +392,9 @@ public class GameClient extends JFrame {
             String opponentMove = parts[2];   // Second move is always opponent's move
             int myNewCoins = Integer.parseInt(parts[3]);  // First coins value is always this player's coins
             int opponentNewCoins = Integer.parseInt(parts[4]); // Second coins value is always opponent's coins
+            
+            // Store opponent's move for tit-for-tat strategy
+            opponentLastMove = opponentMove;
             
             // Check if this was a timeout for this player
             boolean wasTimeout = message.endsWith(":TIMEOUT");
@@ -317,6 +449,7 @@ public class GameClient extends JFrame {
             System.out.println("[CLIENT] Game over received");
             stealButton.setEnabled(false);
             shareButton.setEnabled(false);
+            algorithmButton.setEnabled(false);
             gameLog.append("\n" + message + "\n");
             gameLog.append(String.format("Final Coins: %d\n", myCoins));
             gameLog.append(String.format("Opponent's Final Coins: %d\n", opponentCoins));
@@ -338,6 +471,7 @@ public class GameClient extends JFrame {
         
         stealButton.setEnabled(false);
         shareButton.setEnabled(false);
+        algorithmButton.setEnabled(false);
         moveSentForCurrentRound = true; // Mark that we've sent a move for this round
         
         // Just inform the player about their choice - don't show opponent's choice
