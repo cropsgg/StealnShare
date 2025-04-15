@@ -4,19 +4,22 @@ A LAN-based two-player game implemented in Java with a retro-style UI. Players m
 
 ## Game Rules
 
-- **Both choose STEAL:** Both players lose the bet amount
-- **Both choose SHARE:** Both players keep their money (no change)
-- **One STEAL, one SHARE:** The player who chose STEAL wins the bet amount from the opponent
+- **Both choose SHARE:** Both players gain 3 coins
+- **Both choose STEAL:** Both players gain 1 coin
+- **One STEAL, one SHARE:** The player who chose STEAL gains 5 coins, player who SHARED gains 0 coins
+- **Player disconnection:** If a player disconnects or times out during a round, their move defaults to SHARE for that round and the game ends after that round
+- **Round timeout:** If a player doesn't submit a move within 30 seconds, they default to SHARE
 
 ## Features
 
 - Retro 1990s style UI using Java Swing
 - LAN-based multiplayer (2 players)
 - 30-second timeout per move (defaults to SHARE)
-- Real-time balance updates
+- Real-time coin updates
 - Configurable initial money and number of rounds
 - Sound effects for different game outcomes
 - Retro-styled interface with game log
+- Automatic play using predefined algorithms
 
 ## Requirements
 
@@ -58,15 +61,21 @@ stealnshare/
 - Manages game state and player connections
 - Handles game logic and move validation
 - Processes player moves with timeout mechanism
-- Updates player balances based on game rules
+- Updates player coin counts based on game rules
 - Broadcasts game state to connected clients
+- Detects player disconnections and ends the game appropriately
+- Defaults to SHARE for players who disconnect or time out
 
 ### Client (GameClient.java)
 - Provides retro-styled GUI interface
 - Manages network connection to server
 - Handles user input and move submission
-- Displays game state and balance updates
+- Displays game state and coin updates
 - Plays sound effects based on game events
+- Supports automatic play with three algorithm choices:
+  - Tit for Tat: Starts with SHARE, then copies opponent's last move
+  - Random: Randomly chooses between STEAL and SHARE
+  - Systematic: Alternates between SHARE and STEAL (starting with SHARE)
 
 ### Common (GameConfig.java)
 - Defines shared constants
@@ -126,9 +135,11 @@ java -cp target/steal-and-share-1.0-SNAPSHOT.jar com.stealnshare.client.GameClie
 
 3. Gameplay:
    - Each round lasts 30 seconds
-   - Choose STEAL or SHARE using the buttons
+   - Choose STEAL or SHARE using the buttons, or let an algorithm play for you
+   - Algorithms take 3 seconds to "think" before making a move
    - If no choice is made, defaults to SHARE
-   - View results and balance updates in real-time
+   - If a player disconnects during a round, their move defaults to SHARE and the game ends after that round
+   - View results and coin updates in real-time
    - Sound effects play based on game outcomes
 
 ## Network Configuration
@@ -183,5 +194,43 @@ python generate_sounds.py
 ## License
 
 This project is open source and available under the MIT License.
+
+## Disconnection Handling
+
+The game has been designed to gracefully handle player disconnections:
+
+1. Detection:
+   - The server detects disconnections via socket read timeouts
+   - If a player doesn't respond within the time limit, they're considered disconnected
+
+2. Response:
+   - For the current round: The disconnected player's move defaults to SHARE
+   - The round is completed and coins are awarded accordingly
+   - Game state is sent to the remaining connected player
+   - The game ends after the current round instead of continuing
+
+3. Reconnection:
+   - Players must restart the client application to reconnect
+   - A new game session will begin when two players connect
+
+## Algorithm Play
+
+The game supports automatic play using predefined algorithms:
+
+1. **Algorithm Types:**
+   - **Tit for Tat:** Always starts with SHARE, then copies what the opponent did in the previous round
+   - **Random:** Randomly chooses between STEAL and SHARE with equal probability
+   - **Systematic:** Alternates between SHARE and STEAL (always starts with SHARE)
+
+2. **Usage:**
+   - Click the "PLAY WITH ALGORITHM" button in the first round before making any manual move
+   - Select your desired algorithm from the dialog
+   - Once an algorithm is selected, manual play is disabled for the entire game
+   - The algorithm will wait 3 seconds before making each move
+
+3. **Limitations:**
+   - Algorithms can only be selected in the first round before making any manual move
+   - Algorithm selection cannot be changed mid-game
+   - Each new game requires a new algorithm selection
 
 
