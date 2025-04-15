@@ -234,3 +234,163 @@ The game supports automatic play using predefined algorithms:
    - Each new game requires a new algorithm selection
 
 
+## Computer Networking Details
+
+### Network Architecture
+
+The Steal and Share game implements a classic client-server architecture using Java's socket programming capabilities:
+
+1. **Transport Layer**
+   - **Protocol**: TCP (Transmission Control Protocol)
+   - **Port**: 8080 (configurable in GameConfig.java)
+   - **Benefits**: Reliable, ordered, and error-checked delivery of game messages
+   - **Connection Management**: Full-duplex communication with persistent connections
+
+2. **Application Layer Protocol**
+   - **Format**: Text-based with colon-separated fields
+   - **Encoding**: UTF-8 text
+   - **Message Types**:
+     ```
+     GAME_START                      # Server -> Client: Game initialization
+     ROUND:<number>                  # Server -> Client: Round announcement
+     STEAL or SHARE                  # Client -> Server: Player move
+     RESULT:<move1>:<move2>:<coins1>:<coins2>[:<TIMEOUT>]  # Server -> Client: Round results
+     GAME_OVER                       # Server -> Client: Game termination
+     ```
+
+3. **Protocol Flow**:
+   ```
+   1. Server starts and binds to port 8080
+   2. Two clients connect to server
+   3. Server sends GAME_START to both clients
+   4. For each round:
+      a. Server sends ROUND:<number> to both clients
+      b. Clients send STEAL or SHARE to server (or timeout)
+      c. Server processes moves and sends RESULT:... to both clients
+   5. After all rounds or on disconnect, server sends GAME_OVER
+   6. Server closes connections
+   ```
+
+### Socket Programming Implementation
+
+1. **Server-Side Socket Management**:
+   ```java
+   // Server socket initialization
+   serverSocket = new ServerSocket(GameConfig.PORT);
+   
+   // Accepting client connections (blocking)
+   Socket clientSocket = serverSocket.accept();
+   
+   // Creating I/O streams for client communication
+   BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+   PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+   ```
+
+2. **Client-Side Socket Management**:
+   ```java
+   // Connecting to server
+   socket = new Socket("localhost", GameConfig.PORT);
+   
+   // Creating I/O streams for server communication
+   in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+   out = new PrintWriter(socket.getOutputStream(), true);
+   
+   // Asynchronous message listening
+   new Thread(this::listenForMessages).start();
+   ```
+
+3. **Concurrency Model**:
+   - **Server**: Multi-threaded with one thread per client plus main game thread
+   - **Client**: Main UI thread + dedicated network listener thread
+   - **Synchronization**: Server coordinates player moves and ensures game consistency
+
+### Network Flow Control and Timing
+
+1. **Timeout Implementation**:
+   ```java
+   // Server-side timeout handling using ExecutorService and Futures
+   ExecutorService executor = Executors.newFixedThreadPool(2);
+   Future<String> moveFuture = executor.submit(() -> {
+       return in.readLine(); // Read player move
+   });
+   
+   // Try to get move with timeout
+   try {
+       String move = moveFuture.get(GameConfig.MOVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+       // Process valid move
+   } catch (TimeoutException e) {
+       // Handle timeout - default to SHARE
+   }
+   ```
+
+2. **Buffering and Flushing**:
+   - Server and client both use `PrintWriter` with auto-flush enabled
+   - Critical messages use explicit `flush()` to ensure immediate transmission
+   - Buffered readers improve network efficiency
+
+### Network Reliability and Error Handling
+
+1. **Connection Loss Detection**:
+   - IOException during socket read/write indicates connection loss
+   - Server detects client disconnection through socket read timeouts
+   - Socket exceptions caught and handled to prevent application crashes
+
+2. **Error Recovery**:
+   - If a move is invalid or connection drops, server defaults to SHARE
+   - Game continues with defaulted move for current round
+   - Game ends after the round if player disconnected
+
+### Network Performance Considerations
+
+1. **Bandwidth Usage**:
+   - Extremely lightweight protocol (few bytes per message)
+   - Text-based messages typically under 100 bytes each
+   - Total bandwidth per game session typically under 10KB
+
+2. **Latency Handling**:
+   - 30-second move timeout accommodates even high-latency connections
+   - Blocking reads on client ensure proper synchronization
+   - No real-time action requirements makes the game tolerant of network delays
+
+### Network Security Considerations
+
+1. **Current Implementation**:
+   - No encryption of network traffic
+   - No authentication mechanism
+   - Designed for trusted LAN environments only
+
+2. **Security Recommendations for Production**:
+   - Implement SSL/TLS for encrypted communication
+   - Add user authentication system
+   - Validate all incoming messages to prevent injection attacks
+   - Implement rate limiting to prevent denial of service
+
+### Network Debugging and Testing
+
+1. **Debugging Techniques**:
+   - Extensive logging of network messages with timestamps
+   - Console output of all sent/received messages
+   - Error capture and display for network operations
+
+2. **Network Testing Tools**:
+   - Wireshark for packet capture and protocol analysis
+   - Netcat for manual connection testing
+   - Network emulators for simulating poor network conditions
+
+### Common Network Issues and Solutions
+
+1. **Port Already in Use**
+   - **Issue**: Cannot start server because port 8080 is already in use
+   - **Solution**: Change the port in GameConfig.java or close the application using port 8080
+
+2. **Firewall Blocking**
+   - **Issue**: Clients cannot connect to server
+   - **Solution**: Configure firewall to allow traffic on port 8080 (TCP)
+
+3. **Connection Timeouts**
+   - **Issue**: Clients unable to reach server
+   - **Solution**: Verify server IP address, ensure server is running, check network connectivity
+
+4. **NAT Traversal**
+   - **Issue**: Cannot connect from external networks
+   - **Solution**: Configure port forwarding on router, or use server with public IP address
