@@ -120,6 +120,17 @@ java -cp target/steal-and-share-1.0-SNAPSHOT.jar com.stealnshare.server.GameServ
 java -cp target/steal-and-share-1.0-SNAPSHOT.jar com.stealnshare.client.GameClient
 ```
 
+### Method 3: Using Maven Commands
+1. Start the server:
+```bash
+mvn exec:java -Dexec.mainClass="com.stealnshare.server.GameServer"
+```
+
+2. Start two client instances (in separate terminals):
+```bash
+mvn exec:java -Dexec.mainClass="com.stealnshare.client.GameClient"
+```
+
 ## Game Setup and Play
 
 1. Server Setup:
