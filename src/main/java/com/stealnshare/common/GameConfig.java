@@ -11,7 +11,7 @@ public class GameConfig {
     public static final String RESULT_FORMAT = "RESULT:%s:%s:%d:%d"; // format: RESULT:player1Move:player2Move:player1Coins:player2Coins
     public static final int DEFAULT_ROUNDS = 15; // Default number of rounds
     public static final int LONG_GAME_ROUNDS = 200; // Long game rounds
-    public static final long LONG_GAME_DELAY_MS = 500; // 0.5 second delay between rounds in long game
+    public static final long LONG_GAME_DELAY_MS = 100; // 0.2 second delay between rounds in long game
     
     // New protocol messages for round selection and ready state
     public static final String ROUND_SELECTION = "ROUND_SELECTION:%d"; // format: ROUND_SELECTION:rounds

@@ -17,6 +17,7 @@ public class RakshithaStrategy implements MoveStrategy {
         if (currentRound <= 10) {
             String move = random.nextBoolean() ? GameConfig.STEAL : GameConfig.SHARE;
             lastMoves.add(move);
+            moveRewards.add(0); // Initialize with 0 reward
             return move;
         }
         
@@ -26,16 +27,19 @@ public class RakshithaStrategy implements MoveStrategy {
         int stealReward = 0;
         int shareReward = 0;
         
-        for (int i = lastMoves.size() - 1; i >= Math.max(0, lastMoves.size() - 10); i--) {
-            String move = lastMoves.get(i);
-            int reward = moveRewards.get(i);
-            
-            if (move.equals(GameConfig.STEAL)) {
-                stealCount++;
-                stealReward += reward;
-            } else {
-                shareCount++;
-                shareReward += reward;
+        // Only process if we have enough moves
+        if (lastMoves.size() >= 10) {
+            for (int i = lastMoves.size() - 1; i >= Math.max(0, lastMoves.size() - 10); i--) {
+                String move = lastMoves.get(i);
+                int reward = moveRewards.get(i);
+                
+                if (move.equals(GameConfig.STEAL)) {
+                    stealCount++;
+                    stealReward += reward;
+                } else {
+                    shareCount++;
+                    shareReward += reward;
+                }
             }
         }
         
@@ -46,11 +50,14 @@ public class RakshithaStrategy implements MoveStrategy {
         // Choose move with higher average reward
         String move = stealAvg >= shareAvg ? GameConfig.STEAL : GameConfig.SHARE;
         lastMoves.add(move);
+        moveRewards.add(0); // Initialize with 0 reward
         return move;
     }
     
     public void updateReward(int reward) {
-        moveRewards.add(reward);
+        if (!moveRewards.isEmpty()) {
+            moveRewards.set(moveRewards.size() - 1, reward);
+        }
     }
     
     @Override

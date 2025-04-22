@@ -524,6 +524,33 @@ public class GameClient extends JFrame {
             stealButton.setEnabled(false);
             shareButton.setEnabled(false);
             algorithmButton.setEnabled(false);
+        } else if (message.startsWith("FINAL_SUMMARY:")) {
+            // Parse final summary
+            String[] parts = message.split(":");
+            if (parts.length == 9) {
+                int myFinalCoins = Integer.parseInt(parts[1]);
+                int opponentFinalCoins = Integer.parseInt(parts[2]);
+                int myHits = Integer.parseInt(parts[3]);
+                int myMisses = Integer.parseInt(parts[4]);
+                double hitRate = Double.parseDouble(parts[5]);
+                double missRate = Double.parseDouble(parts[6]);
+                double noneRate = Double.parseDouble(parts[7]);
+                String result = parts[8];
+                
+                // Add final summary to game log with nice formatting
+                gameLog.append("\n\n=== FINAL GAME SUMMARY ===\n\n");
+                gameLog.append(String.format("Your Final Coins: %d\n", myFinalCoins));
+                gameLog.append(String.format("Opponent's Final Coins: %d\n", opponentFinalCoins));
+                gameLog.append(String.format("Game Result: %s\n\n", result));
+                
+                gameLog.append("=== Detailed Statistics ===\n");
+                gameLog.append(String.format("Total Hits: %d (%.2f%%)\n", myHits, hitRate));
+                gameLog.append(String.format("Total Misses: %d (%.2f%%)\n", myMisses, missRate));
+                gameLog.append(String.format("Total Draws: %.2f%%\n", noneRate));
+                
+                // Scroll to bottom
+                gameLog.setCaretPosition(gameLog.getDocument().getLength());
+            }
         } else if (message.startsWith("GAME_CONFIG:")) {
             // Parse final round configuration
             totalRounds = Integer.parseInt(message.substring(12));
@@ -532,6 +559,23 @@ public class GameClient extends JFrame {
         } else if (message.startsWith("OPPONENT_READY:")) {
             boolean opponentReady = Boolean.parseBoolean(message.substring(14));
             gameLog.append("Opponent is " + (opponentReady ? "ready" : "not ready") + "\n");
+        } else if (message.startsWith("STATS:")) {
+            // Parse statistics
+            String[] parts = message.split(":");
+            if (parts.length == 4) {
+                double hitRate = Double.parseDouble(parts[1]);
+                double missRate = Double.parseDouble(parts[2]);
+                double noneRate = Double.parseDouble(parts[3]);
+                
+                // Add statistics to game log
+                gameLog.append("\n\nGame Statistics:\n");
+                gameLog.append(String.format("Hit Rate: %.2f%% (Won when opponent shared)\n", hitRate));
+                gameLog.append(String.format("Miss Rate: %.2f%% (Lost when opponent stole)\n", missRate));
+                gameLog.append(String.format("None Rate: %.2f%% (Draws - both got same coins)\n", noneRate));
+                
+                // Scroll to bottom
+                gameLog.setCaretPosition(gameLog.getDocument().getLength());
+            }
         }
     }
     

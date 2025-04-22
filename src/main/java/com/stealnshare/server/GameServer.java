@@ -23,6 +23,11 @@ public class GameServer {
     private boolean[] playerReady = new boolean[2];
     private int[] playerSelectedRounds = new int[2];
     
+    // Add statistics tracking
+    private int[] hits = new int[2];    // Number of times player won (got 5 coins)
+    private int[] misses = new int[2];  // Number of times player lost (got 0 coins)
+    private int[] draws = new int[2];   // Number of times both got same coins
+    
     public GameServer() {
         players = new PlayerHandler[2];
         numRounds = GameConfig.DEFAULT_ROUNDS; // Set default rounds
@@ -77,6 +82,43 @@ public class GameServer {
             // Game over
             players[0].out.println(GameConfig.GAME_OVER);
             players[1].out.println(GameConfig.GAME_OVER);
+            
+            // Send final summary to both players
+            String summary1 = String.format("FINAL_SUMMARY:%d:%d:%d:%d:%.2f:%.2f:%.2f:%s", 
+                players[0].coins, players[1].coins, hits[0], misses[0], 
+                (double)hits[0]/numRounds*100, (double)misses[0]/numRounds*100, 
+                (double)draws[0]/numRounds*100,
+                players[0].coins > players[1].coins ? "WIN" : 
+                players[0].coins < players[1].coins ? "LOSE" : "DRAW");
+                
+            String summary2 = String.format("FINAL_SUMMARY:%d:%d:%d:%d:%.2f:%.2f:%.2f:%s", 
+                players[1].coins, players[0].coins, hits[1], misses[1], 
+                (double)hits[1]/numRounds*100, (double)misses[1]/numRounds*100, 
+                (double)draws[1]/numRounds*100,
+                players[1].coins > players[0].coins ? "WIN" : 
+                players[1].coins < players[0].coins ? "LOSE" : "DRAW");
+            
+            players[0].out.println(summary1);
+            players[1].out.println(summary2);
+            
+            // At the end of the game, send statistics
+            if (currentRound == numRounds) {
+                // Calculate hit/miss/none rates
+                double hitRate1 = (double) hits[0] / numRounds * 100;
+                double missRate1 = (double) misses[0] / numRounds * 100;
+                double noneRate1 = (double) draws[0] / numRounds * 100;
+                
+                double hitRate2 = (double) hits[1] / numRounds * 100;
+                double missRate2 = (double) misses[1] / numRounds * 100;
+                double noneRate2 = (double) draws[1] / numRounds * 100;
+                
+                // Send statistics to both players
+                String stats1 = String.format("STATS:%.2f:%.2f:%.2f", hitRate1, missRate1, noneRate1);
+                String stats2 = String.format("STATS:%.2f:%.2f:%.2f", hitRate2, missRate2, noneRate2);
+                
+                players[0].out.println(stats1);
+                players[1].out.println(stats2);
+            }
             
         } catch (IOException e) {
             System.err.println("Error in game: " + e.getMessage());
@@ -237,21 +279,29 @@ public class GameServer {
             // Both share - both gain 3 coins
             players[0].coins += GameConfig.BOTH_SHARE_REWARD;
             players[1].coins += GameConfig.BOTH_SHARE_REWARD;
+            draws[0]++;  // Both SHARE counts as draw
+            draws[1]++;
             System.out.println("[SERVER] Both players SHARE - both get 3 coins");
         } else if (move1.equals(GameConfig.STEAL) && move2.equals(GameConfig.SHARE)) {
             // Player 1 steals - gains 5 coins, player 2 gets 0
             players[0].coins += GameConfig.STEAL_FROM_SHARE_REWARD;
             players[1].coins += GameConfig.SHARE_GETS_STOLEN_REWARD;
+            hits[0]++;   // Player 1 successfully stole
+            misses[1]++; // Player 2 got stolen from
             System.out.println("[SERVER] Player 1 STEALS, Player 2 SHARES - Player 1 gets 5 coins");
         } else if (move1.equals(GameConfig.SHARE) && move2.equals(GameConfig.STEAL)) {
             // Player 2 steals - gains 5 coins, player 1 gets 0
             players[0].coins += GameConfig.SHARE_GETS_STOLEN_REWARD;
             players[1].coins += GameConfig.STEAL_FROM_SHARE_REWARD;
+            misses[0]++; // Player 1 got stolen from
+            hits[1]++;   // Player 2 successfully stole
             System.out.println("[SERVER] Player 1 SHARES, Player 2 STEALS - Player 2 gets 5 coins");
         } else if (move1.equals(GameConfig.STEAL) && move2.equals(GameConfig.STEAL)) {
             // Both steal - both get 1 coin
             players[0].coins += GameConfig.BOTH_STEAL_REWARD;
             players[1].coins += GameConfig.BOTH_STEAL_REWARD;
+            draws[0]++;  // Both STEAL counts as draw
+            draws[1]++;
             System.out.println("[SERVER] Both players STEAL - both get 1 coin");
         }
         
@@ -279,7 +329,6 @@ public class GameServer {
         System.out.println("[SERVER] Round " + currentRound + " complete. Player 1 coins: " + 
             players[0].coins + ", Player 2 coins: " + players[1].coins);
             
-        // Return true if either player disconnected
         return player1Timeout || player2Timeout;
     }
     

@@ -4,11 +4,102 @@ A LAN-based two-player game implemented in Java with a retro-style UI. Players m
 
 ## Game Rules
 
-- **Both choose SHARE:** Both players gain 3 coins
-- **Both choose STEAL:** Both players gain 1 coin
-- **One STEAL, one SHARE:** The player who chose STEAL gains 5 coins, player who SHARED gains 0 coins
-- **Player disconnection:** If a player disconnects or times out during a round, their move defaults to SHARE for that round and the game ends after that round
-- **Round timeout:** If a player doesn't submit a move within 30 seconds, they default to SHARE
+1. **Basic Gameplay**
+   - Two players compete over multiple rounds
+   - Each round, players simultaneously choose to either STEAL or SHARE
+   - Points are awarded based on both players' choices
+
+2. **Scoring System**
+   - Both SHARE: Each player gets 3 coins (Draw)
+   - Both STEAL: Each player gets 1 coin (Draw)
+   - One STEAL, one SHARE: 
+     - STEAL player gets 5 coins (Hit)
+     - SHARE player gets 0 coins (Miss)
+
+3. **Game Statistics**
+   - Hit Rate: Percentage of successful steals (when opponent shared)
+   - Miss Rate: Percentage of times got stolen from (when you shared)
+   - None Rate: Percentage of draws (both STEAL or both SHARE)
+   - Final coins comparison determines the winner (WIN/LOSE/DRAW)
+
+## Game Features
+
+1. **Round Selection**
+   - Players can choose between 15 or 200 rounds at the start
+   - Selection is made via a dropdown menu in the main dashboard
+   - If players choose different numbers, the game uses the smaller number
+   - Round selection must be made before clicking "READY"
+
+2. **Ready System**
+   - Each player must indicate readiness by clicking the "READY" button
+   - Once ready, players cannot change their round selection
+   - Players can see when their opponent is ready via status updates
+   - Game starts automatically when both players are ready
+
+3. **Algorithm Play**
+   - Click "PLAY WITH ALGORITHM" before making any manual moves
+   - Once selected, manual play is disabled for the entire game
+   - Algorithm timing:
+     - Regular games (15 rounds): 3-second delay
+     - Long games (200 rounds): 0.2-second delay
+
+4. **Available Algorithms**
+   - **Tit for Tat:** Starts with SHARE, then copies opponent's last move
+   - **Random:** Randomly chooses between STEAL and SHARE
+   - **Systematic:** Alternates between SHARE and STEAL
+   - **Friedman:** Starts with SHARE, then always STEAL after opponent STEALS
+   - **Joss:** Like Tit for Tat, but 10% chance to STEAL
+   - **Graaskamp:** Like Tit for Tat, but STEALS after round 50
+   - **Tit for Two Tats:** Only STEALS after two consecutive STEALS
+   - **Tester:** Tests opponent with initial STEAL
+   - **Rakshitha:** First 10 moves random, then adapts based on success
+
+5. **End Game Statistics**
+   At the end of each game, players receive:
+   - Final coin totals for both players
+   - Game result (WIN/LOSE/DRAW)
+   - Hit Rate: Successful steals percentage
+   - Miss Rate: Times got stolen from percentage
+   - None Rate: Draw percentage (both STEAL or both SHARE)
+
+## Network Protocol
+
+The game uses a text-based protocol with the following message formats:
+
+1. **Game Setup**
+   ```
+   ROUND_SELECTION:<number>     # Client -> Server: Selected rounds (15 or 200)
+   READY_STATE:<boolean>        # Client -> Server: Player ready status
+   OPPONENT_READY:<boolean>     # Server -> Client: Opponent ready status
+   GAME_CONFIG:<number>         # Server -> Client: Final round configuration
+   ```
+
+2. **Game Flow**
+   ```
+   GAME_START                   # Server -> Client: Game initialization
+   ROUND:<number>              # Server -> Client: Round announcement
+   STEAL or SHARE              # Client -> Server: Player move
+   RESULT:<move1>:<move2>:<coins1>:<coins2>[:<TIMEOUT>]  # Server -> Client: Round results
+   GAME_OVER                   # Server -> Client: Game termination
+   FINAL_SUMMARY:<myCoins>:<oppCoins>:<hits>:<misses>:<hitRate>:<missRate>:<noneRate>:<result>  # Server -> Client: Final statistics
+   ```
+
+## Error Handling
+
+1. **Disconnection**
+   - Disconnected player's moves default to SHARE
+   - Game ends after current round
+   - Connected player receives final results
+
+2. **Invalid Moves**
+   - Invalid move formats default to SHARE
+   - Timeout moves default to SHARE
+   - Players are notified of timeouts in results
+
+3. **Round Selection**
+   - Invalid round numbers default to 15
+   - Different selections use smaller number
+   - Selection locked after clicking READY
 
 ## Features
 
@@ -304,6 +395,7 @@ The game uses a text-based protocol with the following message formats:
    STEAL or SHARE              # Client -> Server: Player move
    RESULT:<move1>:<move2>:<coins1>:<coins2>[:<TIMEOUT>]  # Server -> Client: Round results
    GAME_OVER                   # Server -> Client: Game termination
+   FINAL_SUMMARY:<myCoins>:<oppCoins>:<hits>:<misses>:<hitRate>:<missRate>:<noneRate>:<result>  # Server -> Client: Final statistics
    ```
 
 ## Scoring Rules
@@ -353,6 +445,7 @@ The Steal and Share game implements a classic client-server architecture using J
      STEAL or SHARE                  # Client -> Server: Player move
      RESULT:<move1>:<move2>:<coins1>:<coins2>[:<TIMEOUT>]  # Server -> Client: Round results
      GAME_OVER                       # Server -> Client: Game termination
+     FINAL_SUMMARY:<myCoins>:<oppCoins>:<hits>:<misses>:<hitRate>:<missRate>:<noneRate>:<result>  # Server -> Client: Final statistics
      ```
 
 3. **Protocol Flow**:
