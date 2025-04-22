@@ -20,6 +20,8 @@ public class GameServer {
     private PlayerHandler[] players;
     private int numRounds; // Number of rounds set to default
     private int currentRound;
+    private boolean[] playerReady = new boolean[2];
+    private int[] playerSelectedRounds = new int[2];
     
     public GameServer() {
         players = new PlayerHandler[2];
@@ -47,6 +49,9 @@ public class GameServer {
             players[0].coins = 0;
             players[1].coins = 0;
             
+            // Wait for both players to be ready
+            waitForPlayersReady();
+            
             // Start the game
             players[0].out.println(GameConfig.GAME_START);
             players[1].out.println(GameConfig.GAME_START);
@@ -57,6 +62,15 @@ public class GameServer {
                 if (playerDisconnected) {
                     System.out.println("[SERVER] Player disconnected. Ending game after round " + currentRound);
                     break; // End the game early if a player disconnected
+                }
+                
+                // Add delay for long games
+                if (numRounds == GameConfig.LONG_GAME_ROUNDS) {
+                    try {
+                        Thread.sleep(GameConfig.LONG_GAME_DELAY_MS);
+                    } catch (InterruptedException e) {
+                        System.err.println("Error during round delay: " + e.getMessage());
+                    }
                 }
             }
             
@@ -71,6 +85,56 @@ public class GameServer {
                 serverSocket.close();
             } catch (IOException e) {
                 System.err.println("Error closing server: " + e.getMessage());
+            }
+        }
+    }
+    
+    private void waitForPlayersReady() throws IOException {
+        System.out.println("Waiting for players to be ready...");
+        boolean bothReady = false;
+        
+        while (!bothReady) {
+            for (int i = 0; i < 2; i++) {
+                if (!playerReady[i]) {
+                    String message = players[i].in.readLine();
+                    if (message != null) {
+                        if (message.startsWith("ROUND_SELECTION:")) {
+                            // Fix: Split by colon and take the last part
+                            String[] parts = message.split(":");
+                            if (parts.length > 1) {
+                                try {
+                                    playerSelectedRounds[i] = Integer.parseInt(parts[parts.length - 1]);
+                                    System.out.println("Player " + (i + 1) + " selected " + playerSelectedRounds[i] + " rounds");
+                                } catch (NumberFormatException e) {
+                                    System.err.println("Invalid round number format from player " + (i + 1) + ": " + parts[parts.length - 1]);
+                                    playerSelectedRounds[i] = GameConfig.DEFAULT_ROUNDS;
+                                }
+                            }
+                        } else if (message.startsWith("READY_STATE:")) {
+                            playerReady[i] = Boolean.parseBoolean(message.substring(12));
+                            System.out.println("Player " + (i + 1) + " is ready: " + playerReady[i]);
+                            
+                            // Notify other player about this player's ready state
+                            int otherPlayer = (i + 1) % 2;
+                            if (players[otherPlayer] != null) {
+                                players[otherPlayer].out.println("OPPONENT_READY:" + playerReady[i]);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            bothReady = playerReady[0] && playerReady[1];
+            
+            if (bothReady) {
+                // Determine final number of rounds (use the smaller value if different)
+                numRounds = Math.min(playerSelectedRounds[0], playerSelectedRounds[1]);
+                System.out.println("Both players ready. Starting game with " + numRounds + " rounds");
+                
+                // Notify players of final round configuration
+                String configMessage = String.format(GameConfig.GAME_CONFIG, numRounds);
+                players[0].out.println(configMessage);
+                players[1].out.println(configMessage);
             }
         }
     }

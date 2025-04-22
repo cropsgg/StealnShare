@@ -1,4 +1,8 @@
 com/stealnshare/client/GameClient.class
+com/stealnshare/client/SystematicStrategy.class
+com/stealnshare/client/TitForTatStrategy.class
 com/stealnshare/server/GameServer$PlayerHandler.class
-com/stealnshare/common/GameConfig.class
 com/stealnshare/server/GameServer.class
+com/stealnshare/client/MoveStrategy.class
+com/stealnshare/client/RandomStrategy.class
+com/stealnshare/common/GameConfig.class

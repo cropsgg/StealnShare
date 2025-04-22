@@ -10,6 +10,13 @@ public class GameConfig {
     public static final int MOVE_TIMEOUT_SECONDS = 30;
     public static final String RESULT_FORMAT = "RESULT:%s:%s:%d:%d"; // format: RESULT:player1Move:player2Move:player1Coins:player2Coins
     public static final int DEFAULT_ROUNDS = 15; // Default number of rounds
+    public static final int LONG_GAME_ROUNDS = 200; // Long game rounds
+    public static final long LONG_GAME_DELAY_MS = 500; // 0.5 second delay between rounds in long game
+    
+    // New protocol messages for round selection and ready state
+    public static final String ROUND_SELECTION = "ROUND_SELECTION:%d"; // format: ROUND_SELECTION:rounds
+    public static final String READY_STATE = "READY_STATE:%b"; // format: READY_STATE:true/false
+    public static final String GAME_CONFIG = "GAME_CONFIG:%d"; // format: GAME_CONFIG:selectedRounds
     
     // New reward constants based on updated rules
     public static final int BOTH_STEAL_REWARD = 1; // Each gets 1 coin

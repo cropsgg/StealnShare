@@ -244,6 +244,92 @@ The game supports automatic play using predefined algorithms:
    - Algorithm selection cannot be changed mid-game
    - Each new game requires a new algorithm selection
 
+## Game Features
+
+1. **Round Selection**
+   - Players can choose between 15 or 200 rounds at the start of the game
+   - Selection is made via a dropdown menu in the main dashboard
+   - If players choose different numbers of rounds, the game will use the smaller number
+   - Round selection must be made before clicking the "READY" button
+
+2. **Ready System**
+   - Each player must indicate readiness by clicking the "READY" button
+   - Once ready, players cannot change their round selection
+   - Players can see when their opponent is ready via status updates in the game log
+   - Game starts automatically when both players are ready
+
+3. **Game Flow**
+   - Select number of rounds (15 or 200)
+   - Choose whether to play manually or with an algorithm
+   - Click "READY" when prepared to start
+   - Wait for opponent to be ready
+   - Game begins automatically when both players are ready
+   - Make moves each round (STEAL or SHARE) or let algorithm play
+
+4. **Algorithm Types**
+   - **Tit for Tat:** Always starts with SHARE, then copies what the opponent did in the previous round
+   - **Random:** Randomly chooses between STEAL and SHARE with equal probability
+   - **Systematic:** Alternates between SHARE and STEAL (always starts with SHARE)
+   - **Friedman:** Starts with SHARE, then always STEAL after opponent STEALS
+   - **Joss:** Like Tit for Tat, but 10% chance to STEAL
+   - **Graaskamp:** Like Tit for Tat, but STEALS after round 50
+   - **Tit for Two Tats:** Only STEALS after two consecutive STEALS
+   - **Tester:** Tests opponent with initial STEAL
+   - **Rakshitha:** First 10 moves random, then adapts based on success
+
+5. **Algorithm Usage**
+   - Click the "PLAY WITH ALGORITHM" button before making any manual moves
+   - Select your desired algorithm from the dialog
+   - Once an algorithm is selected, manual play is disabled for the entire game
+   - Algorithm timing varies:
+     - Regular games (15 rounds): 3-second delay between moves
+     - Long games (200 rounds): 0.5-second delay between moves
+
+## Network Protocol
+
+The game uses a text-based protocol with the following message formats:
+
+1. **Round Selection and Ready State**
+   ```
+   ROUND_SELECTION:<number>     # Client -> Server: Selected number of rounds (15 or 200)
+   READY_STATE:<boolean>        # Client -> Server: Player ready status
+   OPPONENT_READY:<boolean>     # Server -> Client: Opponent ready status
+   GAME_CONFIG:<number>         # Server -> Client: Final round configuration
+   ```
+
+2. **Game Flow Messages**
+   ```
+   GAME_START                   # Server -> Client: Game initialization
+   ROUND:<number>              # Server -> Client: Round announcement
+   STEAL or SHARE              # Client -> Server: Player move
+   RESULT:<move1>:<move2>:<coins1>:<coins2>[:<TIMEOUT>]  # Server -> Client: Round results
+   GAME_OVER                   # Server -> Client: Game termination
+   ```
+
+## Scoring Rules
+
+1. **Both SHARE:** Each player gets 3 coins
+2. **Both STEAL:** Each player gets 1 coin
+3. **One STEAL, one SHARE:** 
+   - STEAL player gets 5 coins
+   - SHARE player gets 0 coins
+
+## Error Handling
+
+1. **Disconnection**
+   - If a player disconnects, their moves default to SHARE
+   - Game ends after the current round
+   - Connected player receives final results
+
+2. **Invalid Moves**
+   - Invalid move formats default to SHARE
+   - Timeout moves default to SHARE
+   - Players are notified of timeouts in results
+
+3. **Round Selection**
+   - Invalid round numbers default to 15 rounds
+   - Different selections use the smaller number
+   - Selection is locked after clicking READY
 
 ## Computer Networking Details
 
