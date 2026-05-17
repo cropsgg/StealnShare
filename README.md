@@ -1,4 +1,4 @@
-# Steal and Share Game (Computer Network Project)
+# Steal and Share Game (Computer Network Project)  
 
 A LAN-based two-player game implemented in Java with a retro-style UI. Players make strategic decisions to either STEAL or SHARE, affecting their balance based on their opponent's choice.
 
